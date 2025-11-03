@@ -7,7 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rubberpipe/rubberpipe/internal"
+	"github.com/rubberpipe/rubberpipe/internal/hub"
+	"github.com/rubberpipe/rubberpipe/internal/types"
 )
 
 type LocalAdapter struct {
@@ -22,7 +23,7 @@ func NewLocalAdapter(cfg LocalConfig) *LocalAdapter {
 	return &LocalAdapter{BaseDir: cfg.BaseDir}
 }
 
-func LocalAdapterFactory(configJSON string) (internal.DestinationAdapter, error) {
+func LocalAdapterFactory(configJSON string) (hub.DestinationAdapter, error) {
 	var cfg LocalConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("invalid Local config JSON: %w", err)
@@ -31,39 +32,42 @@ func LocalAdapterFactory(configJSON string) (internal.DestinationAdapter, error)
 }
 
 func init() {
-	internal.RegisterDestinationAdapter("local", LocalAdapterFactory)
+	hub.RegisterDestinationAdapter("local", LocalAdapterFactory)
 }
 
-func (l *LocalAdapter) Store(srcPath string) (string, error) {
+func (l *LocalAdapter) Store(srcPath string) (types.ArtifactID, error) {
 	filename := filepath.Base(srcPath)
 	destPath := filepath.Join(l.BaseDir, filename)
 
 	if err := os.MkdirAll(l.BaseDir, os.ModePerm); err != nil {
-		return "", fmt.Errorf("failed to create destination directory: %w", err)
+		return types.ArtifactID{}, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open source file: %w", err)
+		return types.ArtifactID{}, fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer srcFile.Close()
 
 	destFile, err := os.Create(destPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create destination file: %w", err)
+		return types.ArtifactID{}, fmt.Errorf("failed to create destination file: %w", err)
 	}
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, srcFile)
 	if err != nil {
-		return "", fmt.Errorf("failed to copy data: %w", err)
+		return types.ArtifactID{}, fmt.Errorf("failed to copy data: %w", err)
 	}
 
-	return filename, nil
+	return types.ArtifactID{
+		Identifier:      filename,
+		DestinationType: "local",
+	}, nil
 }
 
-func (l *LocalAdapter) Retrieve(fileName string) (string, error) {
-	path := filepath.Join(l.BaseDir, fileName)
+func (l *LocalAdapter) Retrieve(id types.ArtifactID) (string, error) {
+	path := filepath.Join(l.BaseDir, id.Identifier)
 	if _, err := os.Stat(path); err != nil {
 		return "", fmt.Errorf("file not found: %w", err)
 	}
